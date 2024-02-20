@@ -1,0 +1,9 @@
+# inc _x_skeleton, appimage, dbus, nfd
+
+--ro-bind /usr/bin/basename /usr/bin/basename
+--ro-bind /usr/bin/dirname /usr/bin/dirname
+--ro-bind /usr/bin/grep /usr/bin/grep
+--ro-bind /usr/bin/ls /usr/bin/ls
+--ro-bind /usr/bin/sed /usr/bin/sed
+--ro-bind /usr/bin/sh /usr/bin/sh
+--ro-bind /usr/bin/uname /usr/bin/uname

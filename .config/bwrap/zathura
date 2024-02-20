@@ -1,0 +1,7 @@
+# inc _x_skeleton, 1fd
+
+--dir "$XDG_CACHE_HOME/zathura"
+--dir "$XDG_DATA_HOME/zathura"
+--ro-bind "$XDG_CONFIG_HOME/zathura" "$XDG_CONFIG_HOME/zathura"
+--ro-bind /usr/share/file/misc/magic.mgc /usr/share/file/misc/magic.mgc
+--ro-bind /usr/bin/zathura /usr/bin/zathura

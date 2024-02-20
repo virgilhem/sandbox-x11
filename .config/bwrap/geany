@@ -1,0 +1,9 @@
+# inc _x_skeleton, dbus, nfd
+
+## Note: without an argument, the 'dbus' option only sets up access to the
+## 'ca.desrt.dconf' bus needed by gsettings (along with the Dconf user file).
+
+--dir "$XDG_CACHE_HOME/geany"
+--bind "$XDG_CONFIG_HOME/geany" "$XDG_CONFIG_HOME/geany"
+--ro-bind /usr/share/geany /usr/share/geany
+--ro-bind /usr/bin/geany /usr/bin/geany

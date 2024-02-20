@@ -1,0 +1,268 @@
+#!/bin/bash
+
+# This script sets up a secure sandboxed environment using 'bwrap'.
+# Usage: ./sandboX [application_name] [application_args]
+
+PROG_NAME="${1:-/bin/bash}"         # Program name, defaults to /bin/bash.
+ARG_LIST=("${@:2}")                 # Captures program specified arguments.
+CONF_DIR="${XDG_CONFIG_HOME}/bwrap" # Directory for configuration files.
+BPF_DIR="${XDG_CONFIG_HOME}/bpf"    # Directory for cBPF programs.
+APPIMAGE_DIR="/opt/appimages"       # (Optional) directory for AppImages.
+
+BASE_PROG_NAME="${PROG_NAME##*/}"
+CONF_FILE="${CONF_DIR}/${BASE_PROG_NAME}"
+BPF_FILE="${BPF_DIR}/seccomp_${BASE_PROG_NAME}_filter.bpf"
+
+# If the configuration file does not exist, it falls back to '_generic'.
+# Similarly, the cBPF program defaults to 'seccomp_default_filter.bpf'.
+[ -f "${CONF_FILE}" ] || CONF_FILE="${CONF_DIR}/_generic"
+[ -f "${BPF_FILE}" ]  || BPF_FILE="${BPF_DIR}/seccomp_default_filter.bpf"
+[ -f "${CONF_FILE}" ] || exit 1
+[ -f "${BPF_FILE}" ]  || exit 2
+
+# Functions for configuring sandbox resources and capabilities.
+# The global ARGS variable holds the arguments that will be passed to 'bwrap'.
+add_x11() {
+  local n_disp="${DISPLAY:1}"
+  XAUTH="$(mktemp "/tmp/.xauth-${BASE_PROG_NAME}.XXXXXXXXXX")"
+  ARGS+="--ro-bind \"${XAUTH}\" \"${HOME}/.Xauthority\" "
+  ARGS+="--ro-bind \"/tmp/.X11-unix/X${n_disp}\" \"/tmp/.X11-unix/X${n_disp}\" "
+  ARGS+="--setenv XAUTHORITY \"${HOME}/.Xauthority\" "
+  ARGS+="--setenv DISPLAY \"${DISPLAY}\" "
+}
+add_dbus() {
+  PROXYSOCK="$(mktemp "/tmp/.dbus-${BASE_PROG_NAME}.XXXXXXXXXX")"
+  ARGS+="--ro-bind \"${XDG_CONFIG_HOME}/dconf\" \"${XDG_CONFIG_HOME}/dconf\" "
+  ARGS+="--ro-bind \"${PROXYSOCK}\" \"${XDG_RUNTIME_DIR}/bus\" "
+  ARGS+="--setenv DBUS_SESSION_BUS_ADDRESS \"${DBUS_SESSION_BUS_ADDRESS}\" "
+  DBUSOPT=("--talk=ca.desrt.dconf")
+}
+add_appimage() {
+  APPTMPDIR="$(mktemp -d "/tmp/.app-${BASE_PROG_NAME}.XXXXXXXXXX")"
+  ARGS+="--ro-bind \"${APPTMPDIR}\" \"${APPTMPDIR}\" "
+}
+add_net() {
+  ARGS+="--share-net "
+}
+add_bpf() {
+  ARGS+="--seccomp 10 10< \"${BPF_FILE}\" "
+}
+
+# Handles the removal of temporary files and termination of processes.
+cleanup_with_exit() {
+  if [ -v XAUTH ]; then
+    rm -f "${XAUTH}"
+  fi
+
+  if [ -v PROXYSOCK ]; then
+    kill "${PROXY_PID}" 2>/dev/null
+    rm -f "${PROXYSOCK}"
+  fi
+
+  if [ -v APPTMPDIR ]; then
+    kill "${APPIMAGE_PID}" 2>/dev/null
+    if [ -v APPMNTDIR ]; then
+      # Unmounts AppImage and waits until the mountpoint is no longer active.
+      if /usr/bin/fusermount -u "${APPMNTDIR}"; then
+        while mountpoint -q "${APPMNTDIR}"; do sleep 0.01; done
+      fi
+    fi
+    rmdir "${APPTMPDIR}"
+  fi
+
+  # Exits the script with the provided status code, default to 0.
+  exit "${1:-0}"
+}
+
+# Parses options from the first line of the configuration file.
+parse_opt_string() {
+  local _p1 _p2 i opt_dbus opt_del opt_fd opt_inc
+
+  for _ in "${opt_string[@]}"; do case "$_" in
+    inc*)
+    # The 'inc' option includes the specified additional configuration file.
+    # It manages nested inclusion with a limit to prevent excessive recursion.
+      opt_inc="${CONF_DIR}/${_#inc[[:space:]]}"
+      ((cur_depth++))
+      if ((cur_depth > max_depth)); then
+        continue
+      fi
+      parse_conf_file "${opt_inc}" || cleanup_with_exit 1
+      ;;
+    del*)
+    # The 'del' option removes the specified argument from the ARGS string.
+    # It carefully extracts and excludes the targeted argument segment.
+      opt_del="${_#del[[:space:]]}"
+      _p1="${ARGS%%"$opt_del"*}"
+      _p2="${ARGS#*"$opt_del"}"
+      _p2="${_p2#* --}"
+      ARGS="${_p1}--${_p2}"
+      ;;
+    x11)
+      [ -v has_x11 ] || add_x11
+      has_x11=y
+      ;;
+    dbus*)
+    # The 'dbus' option configures D-Bus access for the sandboxed application.
+    # Arguments are passed to 'xdg-dbus-proxy'; default is to allow Dconf.
+      opt_dbus="${_#dbus[[:space:]]}"
+      [ -v has_dbus ] || add_dbus
+      has_dbus=y
+      if [ "${opt_dbus}" != "dbus" ]; then
+        IFS=' ' read -ra opt_dbus <<< "${opt_dbus}"
+        for ((i=0; i<"${#opt_dbus[@]}"; i++)) do
+          DBUSOPT+=("${opt_dbus[$i]}")
+        done
+      fi
+      ;;
+    appimage)
+      [ -v has_appimage ] || add_appimage
+      has_appimage=y
+      ;;
+    net)
+      [ -v has_net ] || add_net
+      has_net=y
+      ;;
+    1fd|nfd)
+    # These options handle file arguments for the sandboxed application.
+    # '1fd' binds the first valid file in ARG_LIST, 'nfd' binds all files.
+      opt_fd="$_"
+      [ -v has_fd ] && continue
+      set -- "${ARG_LIST[@]}"
+      for ((i=$#; i>=1; i--)) do
+        if [ -f "${!i}" ]; then
+          ARGS+="--ro-bind \"\$$i\" \"\$(realpath \"\$$i\")\" "
+          [ "${opt_fd}" = "1fd" ] && break
+        fi
+      done
+      has_fd=y
+      ;;
+  esac; done
+}
+
+# Reads and processes the configuration file.
+parse_conf_file() {
+  local _1stline argline conf_file opt_read opt_string
+
+  conf_file="${1:-$CONF_FILE}"
+  _1stline="$(head -n1 "${conf_file}")" || return
+
+  if [[ "${_1stline}" =~ ^#( ) ]]; then
+    IFS=, read -ra opt_string <<< "${_1stline:2}"
+    [ "${#opt_string[@]}" -ge 1 ] && opt_read=1
+  fi
+
+  # Processes the first line for options, if beginning with '# '.
+  # Removes leading spaces from each element in the option string.
+  if ((opt_read)); then
+    opt_string=("${opt_string[@]/#[[:space:]]/}")
+    parse_opt_string
+  fi
+
+  # Processes the remaining lines as 'bwrap' arguments.
+  # Ensures each argument line ends with a space for proper concatenation.
+  while IFS= read -r argline; do
+    [[ "${argline}" =~ ^( *#|$) ]] && continue
+    [ "${argline: -1}" = "\\" ] && argline="${argline%\\}"
+    [ "${argline: -1}" != " " ] && argline+=" "
+    ARGS+="${argline}"
+  done < "${conf_file}"
+}
+
+# Prepares the environment for running the sandboxed application.
+# Error codes: '1' (missing configuration file), '2' (missing cBPF program),
+# '3' (error preparing Xauthority), '4' (error setting up 'xdg-dbus-proxy'),
+# '5' (error mounting the AppImage).
+prepare_env() {
+  local cur_depth max_depth
+
+  cur_depth=0
+  max_depth=3
+
+  parse_conf_file || cleanup_with_exit 1
+  add_bpf || cleanup_with_exit 2
+
+  if [ -v has_x11 ]; then {
+    # Configures access control through the Xauthority file.
+    /usr/bin/xauth -f "${XAUTH}" generate "${DISPLAY}" . untrusted &&\
+      /usr/bin/xauth nlist "${DISPLAY}" | sed -e 's/^..../ffff/' |\
+        /usr/bin/xauth -f "${XAUTH}" nmerge -
+  } || cleanup_with_exit 3
+  fi
+
+  if [ -v has_dbus ]; then
+    /usr/bin/xdg-dbus-proxy "${DBUS_SESSION_BUS_ADDRESS}" "${PROXYSOCK}" \
+      --filter "${DBUSOPT[@]}" &
+    PROXY_PID=$!
+    # Ensures proper process startup; check if running after brief sleep.
+    sleep 0.01
+    kill -0 "${PROXY_PID}" 2>/dev/null || cleanup_with_exit 4
+  fi
+
+  if [ -v has_appimage ]; then
+    # Starts an AppImage in a separate process (coprocess).
+    # AppImage is mounted for use, and its process ID is automatically stored.
+    coproc APPIMAGE {
+      TMPDIR="${APPTMPDIR}" exec "${APPIMAGE_DIR}/${BASE_PROG_NAME}" \
+        --appimage-mount
+    }
+    sleep 0.01
+    kill -0 "${APPIMAGE_PID}" 2>/dev/null || cleanup_with_exit 5
+  fi
+}
+
+# Main function to run the application within the configured sandbox.
+run_sandbox() {
+  local quote_arg_list run_path
+
+  # Determines the path to run, handling the special case for AppImage.
+  run_path="${PROG_NAME}"
+  if [ -v has_appimage ]; then
+    IFS= read -r -u "${APPIMAGE[0]}" APPMNTDIR
+    run_path="${APPMNTDIR}/AppRun"
+  fi
+
+  # Prepares the argument list, ensuring proper quoting.
+  set -- "${ARG_LIST[@]}"
+  for _ in "${@}"; do
+    quote_arg_list+=" \"$_\""
+  done
+
+  if [ "${DEBUG_MODE}" = "on" ]; then
+    logger "Sandboxing ${BASE_PROG_NAME} with opts: \
+      ${has_x11+x11 }${has_dbus+dbus }${has_net+net }${has_appimage+appimage}"
+    logger -S10000 -p7 \
+      "run_path=${run_path} ARGS=${ARGS} args=${quote_arg_list}"
+  fi
+
+  # Executes the application in a sandbox with 'bwrap'.
+  if [ -v has_x11 ]; then
+    eval "(/usr/bin/bwrap ${ARGS} ${run_path} ${quote_arg_list}) &"
+    BWRAP_PID=$!
+    # A SIGUSR1 is sent by the 'nestX' script upon Xephyr window closure.
+    trap 'kill "${BWRAP_PID}"' USR1
+    wait "${BWRAP_PID}"
+    cleanup_with_exit "$?"
+  else
+    eval /usr/bin/bwrap "${ARGS}" "${run_path}" "${quote_arg_list}"
+  fi
+  cleanup_with_exit
+}
+
+# Special handling for specific applications that use a wrapper script.
+# Reruns the script with the real path of the executable.
+case "${PROG_NAME}" in
+  imv|/usr/bin/imv)
+    exec "$0" /usr/bin/imv-x11 "${ARG_LIST[@]}"
+    ;;
+  firefox|/usr/bin/firefox)
+    exec "$0" /usr/lib/firefox/firefox "${ARG_LIST[@]}"
+    ;;
+  # Add additional cases here for other apps that require similar treatment.
+  # Exemple: /usr/bin/other-app)
+  #   exec "$0" /path/to/real/other-app-executable "${ARG_LIST[@]}"
+  #   ;;
+esac
+
+prepare_env
+run_sandbox

@@ -1,0 +1,30 @@
+# inc _shared_opts, x11
+
+## Basic skeleton for X11/GTK apps (inspired by AppArmor profiles).
+
+### From abstractions/base:
+--ro-bind /etc/ld.so.cache /etc/ld.so.cache
+--ro-bind /usr/share/locale /usr/share/locale
+--ro-bind /usr/share/X11/locale /usr/share/X11/locale
+--ro-bind /etc/localtime /etc/localtime
+
+### From abstractions/fonts:
+--ro-bind /etc/fonts /etc/fonts
+--ro-bind /usr/share/fontconfig /usr/share/fontconfig
+--ro-bind /usr/share/fonts /usr/share/fonts
+--ro-bind-try /usr/local/share/fonts /usr/local/share/fonts
+--ro-bind /var/cache/fontconfig /var/cache/fontconfig
+--dir "$XDG_CONFIG_HOME/fontconfig"
+
+### From abstractions/freedesktop.org:
+--ro-bind /usr/share/applications /usr/share/applications
+--ro-bind /usr/share/icons /usr/share/icons
+--ro-bind-try "$XDG_DATA_HOME/icons" "$XDG_DATA_HOME/icons"
+--ro-bind /usr/share/mime /usr/share/mime
+--ro-bind /usr/share/pixmaps /usr/share/pixmaps
+
+### From abstractions/gnome:
+--ro-bind /etc/gtk-3.0 /etc/gtk-3.0
+--ro-bind /usr/share/gtk-3.0/settings.ini /usr/share/gtk-3.0/settings.ini
+--ro-bind-try "$XDG_CONFIG_HOME/gtk-3.0" "$XDG_CONFIG_HOME/gtk-3.0"
+--ro-bind /usr/share/glib-2.0/schemas /usr/share/glib-2.0/schemas

@@ -1,0 +1,26 @@
+## Shared options
+
+--symlink usr/lib /lib
+--symlink usr/lib /lib64
+--symlink usr/bin /bin
+--symlink usr/bin /sbin
+--ro-bind-data 11 /etc/passwd 11< <(getent passwd $UID 65534)
+--ro-bind-data 12 /etc/group 12< <(getent group $(id -g) 65534)
+--hostname RESTRICTED
+--unshare-all
+--die-with-parent
+--as-pid-1
+--tmpfs /tmp
+--dev /dev
+--proc /proc
+--clearenv
+--setenv HOME "$HOME"
+--setenv LANG "$LANG"
+--setenv PATH /usr/bin
+--setenv XDG_CACHE_HOME "$XDG_CACHE_HOME"
+--setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME"
+--setenv XDG_DATA_HOME "$XDG_DATA_HOME"
+--ro-bind /usr/lib /usr/lib
+--dir "$XDG_CACHE_HOME"
+
+## Note: --new-session is dismissed; TIOCSTI is disallowed by the BPF filter.

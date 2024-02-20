@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# This script sets up an isolated X environment using 'Xephyr'.
+# Usage: ./nestX [application_name] [application_args]
+
+PROG_NAME="${1}"      # Captures the name of the application to run.
+ARG_LIST=("${@:2}")   # Captures program specified arguments.
+SCREEN_SIZE="800x600" # Default screeen size for the Xephyr window.
+XKBOPTIONS=           # Leave blank or replace it with your XKB settings.
+WM_NAME="bspwm"       # Window manager to use, adjust if needed.
+
+# Utility function to pause execution. Avoids creating sleep processes.
+# From https://blog.dhampir.no/?p=1555
+snore() {
+  local IFS
+  [ -n "${_snore_fd:-}" ] || exec {_snore_fd}<> <(:)
+  read ${1:+-t "$1"} -u "${_snore_fd}" || :
+}
+
+# Monitors the Xephyr window and terminates processes upon closure.
+watch_display() {
+  while true; do
+    if ! grep -q "Xephyr on ${XEPHYR_DISP}.0" < <(/usr/bin/wmctrl -l); then
+      if [ -S "/tmp/.X11-unix/X${XEPHYR_DISP:1}" ]; then
+        # Handles window manager specific actions.
+        # For bspwm, closes all nodes & quits to properly end the X session.
+        case "${WM_NAME}" in
+          bspwm)
+            DISPLAY="${XEPHYR_DISP}" /usr/bin/bspc node @/ -c
+            DISPLAY="${XEPHYR_DISP}" /usr/bin/bspc quit
+            ;;
+        esac
+      fi
+      snore 1
+      # Signals the 'sandboX' script to terminate and clean up resources.
+      kill -SIGUSR1 "${PROG_PID}" 2>/dev/null
+      [ -d "/proc/${XEPHYR_PID}" ] && kill "${XEPHYR_PID}" 2>/dev/null
+      rm -f "${XAUTH}"; break
+    fi
+    snore 1
+  done
+}
+
+# Selects an available display number for Xephyr.
+select_display() {
+  for _ in $(seq 1 100); do
+    # Takes the first non-locked display, ensuring the X11 socket is not active.
+    if [[ ! -f "/tmp/.X$_-lock" && ! -S "/tmp/.X11-unix/X$_" ]]; then
+      XEPHYR_DISP=":$_"
+      break
+    fi
+  done
+  [ -v XEPHYR_DISP ] || exit 1
+}
+
+# Launches the Xephyr server with configured options.
+launch_server() {
+  local model layout variant xkb_output
+
+  # Gets the XKB properties, if not specified in XKBOPTIONS.
+  if [ -z "${XKBOPTIONS}" ]; then
+    xkb_output="$(setxkbmap -query)"
+    model="$(echo "${xkb_output}" | sed -n 's/^model: *\([^ ]*\)/\1/p')"
+    layout="$(echo "${xkb_output}" | sed -n 's/^layout: *\([^ ]*\)/\1/p')"
+    variant="$(echo "${xkb_output}" | sed -n 's/^variant: *\([^ ]*\)/\1/p')"
+
+    XKBOPTIONS="xkbmodel=${model},xkblayout=${layout},xkbvariant=${variant}"
+  fi
+
+  # Creates a temporary file for Xauth authentication, filling it with random.
+  XAUTH="$(mktemp "/tmp/.xauth-xephyr${XEPHYR_DISP:1}.XXXXXXXXXX")"
+  /usr/bin/xauth -f "${XAUTH}" add "${XEPHYR_DISP}" . \
+    "$(hexdump -n 16 -e '4/4 "%08x"' /dev/urandom)"
+
+  # Starts Xephyr with the specified screen size and keyboard layout.
+  /usr/bin/Xephyr -auth "${XAUTH}" \
+    -screen "${SCREEN_SIZE}"
+    -keybd ephyr,,"${XKBOPTIONS}" \
+    -no-host-grab -resizeable "${XEPHYR_DISP}" &
+  XEPHYR_PID=$!
+
+  # Waits for the Xephyr socket to be available.
+  while true; do
+    [ -S "/tmp/.X11-unix/X${XEPHYR_DISP:1}" ] && break
+    snore 0.01
+  done
+}
+
+select_display
+launch_server
+
+XAUTHORITY="${XAUTH}" DISPLAY="${XEPHYR_DISP}" "${WM_NAME}" &
+XAUTHORITY="${XAUTH}" DISPLAY="${XEPHYR_DISP}" "${PROG_NAME}" "${ARG_LIST[@]}" &
+PROG_PID=$!
+
+watch_display &
