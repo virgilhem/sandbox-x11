@@ -1,7 +1,7 @@
-# inc _x_skeleton, nfd
+# inc _x_skeleton, inc _dri, nfd
 
-## Note: the 'nfd' option allows mounting all files passed as arguments to the
-## program in read-only mode within the sandbox.
+# Note: the 'nfd' option allows mounting all files passed as arguments to the
+# program in read-only mode within the sandbox.
 
 --ro-bind-try /etc/imv_config /etc/imv_config \
 --ro-bind-try "$XDG_CONFIG_HOME/imv" "$XDG_CONFIG_HOME/imv" \
