@@ -1,13 +1,8 @@
-# inc _x_skeleton, nfd
+# inc _x_skeleton, inc _dri, nfd
 
 ## Note: the 'nfd' option allows mounting all files passed as arguments to the
 ## program in read-only mode within the sandbox.
 
 --ro-bind-try /etc/imv_config /etc/imv_config
 --ro-bind-try "$XDG_CONFIG_HOME/imv" "$XDG_CONFIG_HOME/imv"
---ro-bind /usr/share/drirc.d /usr/share/drirc.d
---ro-bind /usr/share/glvnd /usr/share/glvnd
---dev-bind /dev/dri /dev/dri
---ro-bind /sys/dev/char /sys/dev/char
---ro-bind /sys/devices/pci0000:00 /sys/devices/pci0000:00
 --ro-bind /usr/bin/imv-x11 /usr/bin/imv-x11
