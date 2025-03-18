@@ -23,7 +23,6 @@
 --ro-bind /usr/share/glvnd /usr/share/glvnd
 --ro-bind /usr/share/icu /usr/share/icu
 --ro-bind /usr/share/libdrm /usr/share/libdrm
---ro-bind /usr/share/X11/xkb /usr/share/X11/xkb
 
 ### For hardware-accelerated rendering:
 --dev-bind /dev/dri /dev/dri

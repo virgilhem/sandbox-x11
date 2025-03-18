@@ -6,6 +6,7 @@
 --ro-bind /etc/ld.so.cache /etc/ld.so.cache
 --ro-bind /usr/share/locale /usr/share/locale
 --ro-bind /usr/share/X11/locale /usr/share/X11/locale
+--ro-bind /usr/share/X11/xkb /usr/share/X11/xkb
 --ro-bind /etc/localtime /etc/localtime
 
 ### From abstractions/fonts:
