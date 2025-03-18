@@ -1,5 +1,6 @@
 # inc _x_skeleton, appimage, dbus, nfd
 
+--bind "$XDG_CONFIG_HOME/libreoffice/4" "$XDG_CONFIG_HOME/libreoffice/4"
 --ro-bind /usr/bin/basename /usr/bin/basename
 --ro-bind /usr/bin/dirname /usr/bin/dirname
 --ro-bind /usr/bin/grep /usr/bin/grep
