@@ -6,7 +6,5 @@
 
 --dir "$XDG_CACHE_HOME/geany" \
 --bind "$XDG_CONFIG_HOME/geany" "$XDG_CONFIG_HOME/geany" \
---bind "$HOME/tmp" "$HOME/tmp" \
 --ro-bind /usr/share/geany /usr/share/geany \
 --ro-bind /usr/bin/geany /usr/bin/geany \
---chdir "$HOME/tmp" \

@@ -24,4 +24,4 @@
 --ro-bind /usr/lib /usr/lib \
 --dir "$XDG_CACHE_HOME" \
 
-## Note: --new-session is dismissed; TIOCSTI is disallowed by the BPF filter.
+# Note: --new-session is dismissed; TIOCSTI is disallowed by the BPF filter.

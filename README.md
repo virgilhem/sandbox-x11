@@ -29,7 +29,7 @@ Applications can be run in two modes.
 
 **Example**
 
-Running a web browser in full isolation mode: `./nestX ./sandbox firefox`
+Running a web browser in full isolation mode: `./nestX ./sandboX firefox`
 
 See the provided **[firefox](/.config/bwrap/firefox)** configuration file.
 
