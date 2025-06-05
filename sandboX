@@ -23,7 +23,7 @@ BPF_FILE="${BPF_DIR}/seccomp_${BASE_PROG_NAME}_filter.bpf"
 # Functions for configuring sandbox resources and capabilities.
 # The global ARGS variable holds the arguments that will be passed to 'bwrap'.
 add_x11() {
-  local n_disp="${DISPLAY:1}"
+  local n_disp="${DISPLAY#*:}"; n_disp="${n_disp%%.*}"
   XAUTH="$(mktemp "/tmp/.xauth-${BASE_PROG_NAME}.XXXXXXXXXX")"
   ARGS+="--ro-bind \"${XAUTH}\" \"${HOME}/.Xauthority\" "
   ARGS+="--ro-bind \"/tmp/.X11-unix/X${n_disp}\" \"/tmp/.X11-unix/X${n_disp}\" "
