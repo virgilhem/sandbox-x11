@@ -4,7 +4,7 @@
 # Usage: ./sandboX [application_name] [application_args]
 
 PROG_NAME="${1:-/bin/bash}"         # Program name, defaults to /bin/bash.
-ARG_LIST=("${@:2}")                 # Captures program specified arguments.
+ARG_LIST=("${@:2}")                 # Capture program specified arguments.
 CONF_DIR="${XDG_CONFIG_HOME}/bwrap" # Directory for configuration files.
 BPF_DIR="${XDG_CONFIG_HOME}/bpf"    # Directory for cBPF programs.
 APPIMAGE_DIR="/opt/appimages"       # (Optional) directory for AppImages.
@@ -43,7 +43,7 @@ add_bpf() {
   ARGS+="--seccomp 10 10< \"${bpf_path}\" "
 }
 
-# Handles the removal of temporary files and termination of processes.
+# Handle the removal of temporary files and termination of processes.
 cleanup_with_exit() {
   local exit_code=$?
 
@@ -59,7 +59,7 @@ cleanup_with_exit() {
   if [ -v APPTMPDIR ]; then
     kill "${APPIMAGE_PID}" 2>/dev/null
     if [ -v APPMNTDIR ]; then
-      # Unmounts AppImage and waits until the mountpoint is no longer active.
+      # Unmount AppImage and wait until the mountpoint is no longer active.
       if /usr/bin/fusermount -u "${APPMNTDIR}"; then
         while mountpoint -q "${APPMNTDIR}"; do sleep 0.01; done
       fi
@@ -71,7 +71,7 @@ cleanup_with_exit() {
 }
 trap cleanup_with_exit EXIT
 
-# Parses options from the first line of the configuration file.
+# Parse options from the first line of the configuration file.
 parse_opt_string() {
   local _p1 _p2 i opt_dbus opt_del opt_fd opt_inc
 
@@ -100,7 +100,7 @@ parse_opt_string() {
       has_x11=y
       ;;
     dbus*)
-    # The 'dbus' option configures D-Bus access for the sandboxed application.
+    # The 'dbus' option configures D-Bus filter for the sandboxed application.
     # Arguments are passed to 'xdg-dbus-proxy'; default is to allow Dconf.
       opt_dbus="${_#dbus[[:space:]]}"
       [ -v has_dbus ] || add_dbus
@@ -128,12 +128,12 @@ parse_opt_string() {
   esac; done
 }
 
-# Reads and processes the configuration file.
+# Read and process the configuration file.
 parse_conf_file() {
   local _1stline arg_line conf_file opt_read opt_string
 
   conf_file="${1:-${CONF_DIR}/${BASE_PROG_NAME}}"
-  # If the configuration file does not exist, falls back to '_generic'.
+  # If the configuration file does not exist, fall back to '_generic'.
   [ -f "${conf_file}" ] || conf_file="${CONF_DIR}/_generic"
   [ -f "${conf_file}" ] || exit 1
 
@@ -143,15 +143,15 @@ parse_conf_file() {
     [ "${#opt_string[@]}" -ge 1 ] && opt_read=1
   fi
 
-  # Processes the first line for options, if beginning with '# '.
-  # Removes leading spaces from each element in the option string.
+  # Process the first line for options, if beginning with '# '.
+  # Remove leading spaces from each element in the option string.
   if ((opt_read)); then
     opt_string=("${opt_string[@]/#[[:space:]]/}")
     parse_opt_string
   fi
 
-  # Processes the remaining lines as 'bwrap' arguments.
-  # Ensures each argument line ends with a space for proper concatenation.
+  # Process the remaining lines as 'bwrap' arguments.
+  # Ensure each argument line ends with a space for proper concatenation.
   while IFS= read -r arg_line; do
     [[ "${arg_line}" =~ ^( *#|$) ]] && continue
     [ "${arg_line: -1}" = "\\" ] && arg_line="${arg_line%\\}"
@@ -160,7 +160,7 @@ parse_conf_file() {
   done < "${conf_file}"
 }
 
-# Prepares the environment for running the sandboxed application.
+# Prepare the environment for running the sandboxed application.
 # Error codes: '1' (missing configuration file), '2' (missing cBPF program),
 # '3' (error preparing Xauthority), '4' (error setting up 'xdg-dbus-proxy'),
 # '5' (error mounting the AppImage).
@@ -174,7 +174,7 @@ prepare_env() {
   add_bpf
 
   if [ -v has_x11 ]; then {
-    # Configures access control through the Xauthority file.
+    # Configure access control through the Xauthority file.
     /usr/bin/xauth -f "${XAUTH}" generate "${DISPLAY}" . untrusted &&\
       /usr/bin/xauth nlist "${DISPLAY}" | sed -e 's/^..../ffff/' |\
         /usr/bin/xauth -f "${XAUTH}" nmerge -
@@ -185,13 +185,13 @@ prepare_env() {
     /usr/bin/xdg-dbus-proxy "${DBUS_SESSION_BUS_ADDRESS}" "${PROXYSOCK}" \
       --filter "${DBUSOPT[@]}" &
     PROXY_PID=$!
-    # Ensures proper process startup; check if running after brief sleep.
+    # Ensure proper process startup; check if running after brief sleep.
     sleep 0.01
     kill -0 "${PROXY_PID}" 2>/dev/null || exit 4
   fi
 
   if [ -v has_appimage ]; then
-    # Starts an AppImage in a separate process (coprocess).
+    # Start an AppImage in a separate process (coprocess).
     # AppImage is mounted for use, and its process ID is automatically stored.
     coproc APPIMAGE {
       TMPDIR="${APPTMPDIR}" exec "${APPIMAGE_DIR}/${BASE_PROG_NAME}" \
@@ -206,7 +206,7 @@ prepare_env() {
 run_sandbox() {
   local cmd_string file_arg run_path
 
-  # Determines the path to run, handling the special case for AppImage.
+  # Determine the path to run, handling the special case for AppImage.
   run_path="${PROG_NAME}"
   if [ -v has_appimage ]; then
     IFS= read -r -u "${APPIMAGE[0]}" APPMNTDIR
@@ -215,13 +215,13 @@ run_sandbox() {
 
   set -- "${ARG_LIST[@]}"
 
-  # Handles dynamic file binding if requested.
+  # Handle dynamic file binding if requested.
   # '1fd' binds the first valid file in ARG_LIST, 'nfd' binds all files.
   if [ -v has_fd ]; then
     for ((i=$#; i>=1; i--)) do
       if [ -f "${!i}" ]; then
         file_arg="$(realpath "${!i}")"
-        # Securely appends the bind option. The '@Q' operator wraps the path
+        # Securely append the bind option. The '@Q' operator wraps the path
         # in single quotes to prevent expansion during eval.
         ARGS+="--ro-bind ${file_arg@Q} ${file_arg@Q} "
         [ "${has_fd}" = "1fd" ] && break
@@ -229,7 +229,7 @@ run_sandbox() {
     done
   fi
 
-  # Constructs the final command string securely.
+  # Construct the final command string securely.
   cmd_string="/usr/bin/bwrap ${ARGS} ${run_path@Q} ${@@Q}"
 
   if [ "${DEBUG_MODE}" = "on" ]; then
@@ -238,7 +238,7 @@ run_sandbox() {
     logger -S10000 -p7 "cmd_string=${cmd_string}"
   fi
 
-  # Executes the application in a sandbox with 'bwrap'.
+  # Execute the application in a sandbox with 'bwrap'.
   # 'eval' is required here to process <(...) substitutions found in ARGS.
   if [ -v has_x11 ]; then
     eval "${cmd_string} &"
@@ -252,7 +252,7 @@ run_sandbox() {
 }
 
 # Special handling for specific applications that use a wrapper script.
-# Reruns the script with the real path of the executable.
+# Rerun the script with the real path of the executable.
 case "${PROG_NAME}" in
   imv|/usr/bin/imv)
     exec "$0" /usr/bin/imv-x11 "${ARG_LIST[@]}"
