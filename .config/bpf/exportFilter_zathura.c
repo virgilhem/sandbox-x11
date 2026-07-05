@@ -62,7 +62,6 @@ int main(int argc, char *argv[])
     ALLOW_RULE (mremap);
     ALLOW_RULE (munmap);
     ALLOW_RULE (newfstatat);
-    ALLOW_RULE (pipe2);
     ALLOW_RULE (poll);
     ALLOW_RULE (ppoll);
     ALLOW_RULE (pread64);
@@ -80,8 +79,11 @@ int main(int argc, char *argv[])
     ALLOW_RULE (sysinfo);
     ALLOW_RULE (write);
 
+    ALLOW_RULE (sched_yield); // Glib spinlocks
+
     ADD_RULE (SCMP_ACT_ALLOW, socket, 1, SCMP_CMP(0, SCMP_CMP_EQ, AF_UNIX));
     ADD_RULE (SCMP_ACT_ALLOW, clone, 1, SCMP_CMP(0, SCMP_CMP_EQ, CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID));
+    ADD_RULE (SCMP_ACT_ERRNO(EPERM), ioctl, 1, SCMP_CMP(1, SCMP_CMP_EQ, (scmp_datum_t)TIOCSTI));
     ADD_RULE (SCMP_ACT_ALLOW, ioctl, 1, SCMP_CMP(0, SCMP_CMP_EQ, 1));
     ADD_RULE (SCMP_ACT_ALLOW, ioctl, 1, SCMP_CMP(0, SCMP_CMP_EQ, 2));
     ADD_RULE (SCMP_ACT_ALLOW, prctl, 1, SCMP_CMP(0, SCMP_CMP_EQ, PR_SET_NAME));
