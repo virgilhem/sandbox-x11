@@ -1,4 +1,4 @@
-# del --setenv LIBGL_ALWAYS_SOFTWARE
+# del --setenv LIBGL_ALWAYS_SOFTWARE, del --setenv GDK_DISABLE
 
 ## Allows direct GPU access via DRI (for hardware acceleration).
 
